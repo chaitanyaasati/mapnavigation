@@ -1,37 +1,91 @@
-# maps — vector maps on the Cheeko Gotchi V2 (ESP32-S3)
+# mapnavigation
 
-An offline-style **vector** map viewer (OpenStreetMap data, anti-aliased, crisp at
-any zoom) for the "CGOTCHI ESP32-S3 AI Development Kit" (= Cheeko Gotchi V2:
-240×296 touch display, mics, speaker, WiFi). Tiles are fetched over WiFi from a
-tiny static tile server and cached in PSRAM + flash. Voice search goes through
-Groq (Whisper → LLM) and an offline place index built from the same OSM data.
+Vector street maps with voice search on a **Cheeko Gotchi V2** — the ESP32‑S3
+"AI companion" kit with a 240×296 touch display, microphones and WiFi.
 
-```
-OSM .pbf ──build_tiles.py──▶ tiles/z/x/y.bin ─┐
-         ──build_places.py─▶ places.bin        ├── serve.py (HTTP/1.1) ──WiFi──▶ ESP32-S3
-                                               ┘        tile_store (PSRAM LRU + LittleFS) → renderer (raster.cpp) → LVGL
-```
+The map is drawn from **OpenStreetMap vector data**, not pictures: roads,
+buildings, water and parks are rasterised on the device with anti‑aliasing, so
+they stay crisp at every zoom level. Tiles come over WiFi from a tiny static
+tile server and are cached on the device. Say *"take me to Koramangala"* and the
+map flies there.
 
-## Layout
-
-| Path | What |
+| | |
 |---|---|
-| `maps/` | Arduino sketch (LVGL 9 + LovyanGFX). `raster.cpp` is the AA rasteriser, `renderer.cpp` draws tiles, `map_view.cpp` owns the viewport/render task, `tile_store.cpp` fetches+caches, `voice.cpp` push-to-talk, `geocode.cpp` place lookup. |
-| `maps/board_config.h` | Pin map of the board (recovered from the stock firmware, see below). |
-| `tools/build_tiles.py` | OSM `.pbf` → tiles (format: `tools/tile_format.md`). |
-| `tools/build_places.py` | OSM `.pbf` → `places.bin` geocoder index. |
-| `tools/style.json` → `tools/gen_style_h.py` → `maps/style.h` | Shared map style. |
-| `tools/serve.py` | Keep-alive tile server for development. |
-| `tools/hosttest/` | Builds the device renderer on the Mac (`render_tile` renders any lon/lat/zoom to a PPM with the exact device code). |
-| `hw_probe/` | Hardware discovery sketch + `decode_gpio_matrix.py` (reads a running firmware's pin routing over USB-JTAG). |
+| Rendering | custom anti‑aliased rasteriser (`maps/raster.cpp`) into an off‑screen canvas, LVGL 9 UI |
+| Data | OSM extract → ~10k lean binary tiles (52 MB for Bengaluru) + an offline place index |
+| Delivery | HTTP from any static host, PSRAM LRU + 12 MB flash cache on the device |
+| Voice | push‑to‑talk → Groq Whisper → LLM → JSON map command → local geocoder |
+| WiFi | captive‑portal setup with a QR code; settings stored in flash |
 
-## Installing on the device (from a fresh checkout)
+---
+
+## Using the device
+
+**First power‑on / new WiFi.** If the device cannot reach a known WiFi within
+25 s it shows *WiFi setup* with a QR code and opens the hotspot
+**`CheekoMaps-Setup`**. Scan the QR with a phone (or join that WiFi). The setup
+page pops up automatically (if not, open `http://192.168.4.1`). Choose your
+network, type the password, tap **Save & connect**. The device restarts on your
+WiFi and the map appears. To change WiFi later, hold **VOL−** for 3 s (or hold
+it while powering on).
+
+**Controls**
+
+| Action | Result |
+|---|---|
+| Drag | pan |
+| Double‑tap | zoom in (around the tap) |
+| Long‑press | zoom out |
+| VOL+ / VOL− (short) | zoom in / out |
+| VOL− held 3 s | WiFi setup |
+| Mic button (bottom‑right), **hold while speaking** | voice command |
+
+Voice commands: *"take me to Indiranagar"*, *"show the airport"*, *"go to MG Road"*,
+*"zoom out a lot"*, *"pan north"*. The button is red while recording, amber
+while thinking; the result appears as a message at the top.
+
+The status line at the bottom‑left shows zoom, WiFi state, last render time
+and free heap.
+
+---
+
+## Repository layout
+
+```
+maps/                 Arduino sketch (LVGL 9 + LovyanGFX)
+  maps.ino              setup/loop, gestures, status, serial console
+  map_view.*            viewport maths, render task, canvas swap, labels
+  renderer.*  tile.h    VT01 tile reader and drawing passes
+  raster.*              anti-aliased polygon/polyline rasteriser (RGB565)
+  tile_store.*          HTTP fetch, PSRAM LRU, LittleFS cache, prefetch
+  voice.*               ES7210/ES8311 codec, Whisper upload, LLM command parsing
+  geocode.*             places.bin lookup
+  provision.*           NVS settings + captive-portal WiFi setup
+  touch_cst810.h        CST810 touch over Wire
+  lgfx_setup.h          JD9853 panel config
+  board_config.h        pin map (recovered from the stock firmware)
+  style.h               GENERATED from tools/style.json
+  lv_conf.h             LVGL configuration (sketch-local)
+  partitions.csv        3.5 MB app + 12 MB LittleFS tile cache
+  secrets.h.example     WiFi / Groq key / tile server defaults
+tools/                Map data pipeline (Python 3.12)
+  build_tiles.py        OSM .pbf -> tiles  (format: tile_format.md)
+  build_places.py       OSM .pbf -> places.bin geocoder index
+  style.json            shared map style;  gen_style_h.py -> maps/style.h
+  serve.py              HTTP/1.1 keep-alive tile server for development
+  inspect_tile.py       dump a tile's structure
+  hosttest/             builds the device renderer on the Mac (render_tile: any lon/lat/zoom -> image)
+hw_probe/             hardware discovery sketch + decode_gpio_matrix.py
+build.sh              compile / flash helper
+```
+
+---
+
+## Developer setup
+
+### 1. Toolchain (once per machine, macOS)
 
 ```bash
-git clone https://github.com/chaitanyaasati/mapnavigation.git
-cd mapnavigation
-
-# 1. toolchain + libraries (once per machine)
 brew install arduino-cli osmium-tool
 arduino-cli config init
 arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -39,83 +93,132 @@ arduino-cli config set library.enable_unsafe_install true
 arduino-cli core update-index && arduino-cli core install esp32:esp32@3.3.12
 arduino-cli lib install lvgl@9.6.0 LovyanGFX ArduinoJson
 arduino-cli lib install --git-url https://github.com/pschatzmann/arduino-audio-driver
-
-# 2. your settings
-cp maps/secrets.h.example maps/secrets.h     # WiFi SSID/password, Groq key, TILE_SERVER=http://<server-ip>:8000/bengaluru
-
-# 3. plug the board in with a DATA cable, directly into the Mac (hubs drop its USB), then
-./build.sh maps upload                        # port defaults to /dev/cu.usbmodem1101; override with PORT=/dev/cu.xxx
 ```
-If the board is running a sketch that is not responding, hold the VOL+ (BOOT)
-button while powering it on to enter download mode, then run the upload.
 
-To go back to the original Cheeko firmware:
-`esptool --port /dev/cu.usbmodem1101 write-flash 0 ~/Documents/Arduino/maps-backup/cheeko_stock_16MB.bin`
-(the backup is not in this repo).
-
-## Build / flash (day to day)
+### 2. Settings
 
 ```bash
-./build.sh maps            # compile only
-./build.sh maps upload     # compile + flash
+git clone https://github.com/chaitanyaasati/mapnavigation.git && cd mapnavigation
+cp maps/secrets.h.example maps/secrets.h
 ```
-`build.sh` pins the FQBN (ESP32-S3, OPI PSRAM, 16 MB, hardware CDC), builds at
--O2, and the sketch-local `maps/partitions.csv` (3.5 MB app + 12 MB LittleFS
-tile cache) is picked up automatically. `maps/lv_conf.h` lives in the sketch.
+Edit `maps/secrets.h`: `SEED_WIFI_SSID` / `SEED_WIFI_PASS` (factory defaults;
+the portal overrides them), `SEED_GROQ_KEY` (voice), `TILE_SERVER`
+(e.g. `http://192.168.0.4:8000/bengaluru`). `secrets.h` is git‑ignored.
 
-## Map data
+### 3. Flash
+
+Plug the board in with a **data** cable, directly into the Mac (USB hubs drop
+its native USB port), then:
 
 ```bash
-cd tools && uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python osmium shapely numpy pillow
+./build.sh maps upload        # port defaults to /dev/cu.usbmodem1101; PORT=/dev/cu.xxx to override
+./build.sh maps               # compile only
+```
+`build.sh` pins the FQBN (ESP32‑S3, OPI PSRAM, 16 MB, hardware CDC), builds at
+`-O2`, and picks up the sketch‑local `partitions.csv` and `lv_conf.h`.
+If the board does not respond to the upload, hold **VOL+** (wired to BOOT)
+while powering it on to enter download mode.
+
+### 4. Map data
+
+```bash
+cd tools
+uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python osmium shapely numpy pillow
+curl -LO https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf      # any Geofabrik extract
 osmium extract -b 77.40,12.78,77.85,13.25 -s smart -o bengaluru.osm.pbf southern-zone-latest.osm.pbf
-.venv/bin/python build_tiles.py bengaluru.osm.pbf out/bengaluru --bbox 77.40 12.78 77.85 13.25   # ~2 min, 52 MB
+.venv/bin/python build_tiles.py  bengaluru.osm.pbf out/bengaluru --bbox 77.40 12.78 77.85 13.25   # ~2 min, 52 MB
 .venv/bin/python build_places.py bengaluru.osm.pbf out/bengaluru/places.bin --bbox 77.40 12.78 77.85 13.25
-.venv/bin/python serve.py --port 8000 --dir out                                                  # device fetches /bengaluru/z/x/y.bin
+.venv/bin/python serve.py --port 8000 --dir out        # device fetches <TILE_SERVER>/z/x/y.bin and /places.bin
 ```
-Any static host works for the tile folder (it is plain files).
+Other cities: same commands with a different bbox and output name; set
+`TILE_SERVER` accordingly. `HOME_LON/LAT` in `maps.ino` is the start position.
 
-## WiFi setup (no computer needed)
+**Handing the device to someone else:** the tile folder is plain static files.
+Put `out/<region>` on a host reachable from anywhere (a Raspberry Pi behind a
+tunnel, GitHub Pages, S3, …), bake that URL into `TILE_SERVER`, and the device
+only needs WiFi. Voice already talks to Groq over the internet.
 
-Settings (WiFi + tile server) are stored in flash. On power-up the device tries
-the saved WiFi; if there is none or it cannot connect within 25 s, it opens the
-hotspot **CheekoMaps-Setup** and shows a QR code. Scan it with a phone (or join
-that WiFi), the setup page pops up (captive portal; manual URL
-`http://192.168.4.1`), choose the network, enter the password, save — the
-device reboots onto the new WiFi. Hold **VOL−** for 3 s at any time (or during
-power-on) to open setup again. `secrets.h` only provides the factory defaults.
+### Host preview (no board needed)
 
-## Controls
+```bash
+tools/hosttest/build.sh
+tools/hosttest/render_tile tools/out/bengaluru 77.6094 12.9752 15 240 296 view.ppm
+```
+Renders with the exact device code — use it to check style/pipeline changes.
 
-Drag = pan · double-tap = zoom in · long-press = zoom out · VOL+/VOL− = zoom ·
-mic button: press and hold while speaking (release = stop) → "take me to Koramangala",
-"zoom out", "show the airport"…
+### Serial console (115200 baud)
 
-Serial console (115200): `z <zoom>`, `g <lon> <lat> [zoom]`, `f <place>` (geocode),
-`v <text>` (run the LLM path on typed text), `s` (stats), `b <0-255>` brightness,
-`p` test tone, `L` re-init LCD, `w` open WiFi setup.
+`z <zoom>` · `g <lon> <lat> [zoom]` · `f <place>` geocode · `v <text>` run the
+LLM/command path on typed text · `s` stats · `b <0‑255>` brightness ·
+`p` test tone · `L` re‑init LCD · `w` open WiFi setup.
 
-## Performance (measured)
+---
 
-Full 360×444 canvas redraw: z10–12 30–120 ms, z13 ~250 ms, dense z14–16
-350–600 ms (rasteriser ≈ 60 % of that). Uncached view adds 100–400 ms of
-download from a LAN server. ThorVG (LVGL's vector backend) was tried first and
-rejected: ~1 ms + 8 KB heap per stroked polyline on this chip.
+## How it works
 
-## Hardware notes (this board is undocumented)
+**Tiles.** `build_tiles.py` walks an OSM `.pbf` once, keeps what the map draws
+(roads by class, water, landuse, buildings, rail, places, POIs), simplifies per
+zoom (z10–16) and writes one small file per tile: int16 tile‑local coordinates,
+grouped by layer/class in draw order, with a string table for names
+(`tools/tile_format.md`). A dense city‑centre tile is 5–20 KB.
 
-Everything in `board_config.h` was recovered by dumping the GPIO matrix of the
-stock firmware over the built-in USB-JTAG (`hw_probe/decode_gpio_matrix.py`) and
-confirmed with `hw_probe`. The stock 16 MB flash image is backed up in
-`~/Documents/Arduino/maps-backup/`; `esptool write-flash 0 <file>` restores it.
+**Rendering.** The render task (core 0) fetches the tiles covering a
+360×444 canvas (screen + 50 % margin) and draws them in passes — areas, lines,
+road casings, road fills — with a signed‑area coverage rasteriser (the
+font‑rs / stb_truetype technique): exact‑area anti‑aliasing, strokes built from
+quads + round joints, no per‑shape heap. LVGL (core 1) shows the finished
+canvas as an image, pans it instantly by offset while you drag and scales it
+while you zoom; the next render replaces it when ready. Labels are LVGL
+labels placed with a greedy collision check.
 
-Known quirks:
-- **Backlight drops out after a while** (also with the original firmware); only a
-  power-cycle brings it back. The ESP keeps running. Not fixable from firmware
-  as far as found (LEDC keeps running, LCD re-init / GPIO2 / GPIO4 don't help).
-- **Speaker is silent**: ES8311 is configured and I2S clocks are proven by the
-  mic path, but the amplifier's enable line was not found (GPIO
-  1/3/4/18/21/38/41/42/47/48 and 2 tried). Voice feedback is on-screen for now.
-- GPIO2 must be held LOW (stock does); floating it, the board powers off after
-  ~30 min. Driving it HIGH for seconds powers the board off.
-- The `audio-driver` `addI2C(function, scl, sda, port, …)` puts `port` into the
+**Voice.** Mic audio (ES7210 → I2S) is streamed as a WAV to Groq Whisper while
+you hold the button; the transcript goes to `openai/gpt-oss-120b` with a prompt
+that returns `{"action":"goto","place":…}` / `zoom` / `pan`; the place is looked
+up in `places.bin` (47k Bengaluru places, POIs, campuses and roads) and the map
+jumps. Typical: STT ~250 ms, LLM ~1.1 s.
+
+**Measured render times** (full canvas): z10–12 30–120 ms, z13 ~250 ms, dense
+z14–16 350–600 ms. Uncached areas add 100–400 ms of download on a LAN.
+LVGL's ThorVG vector backend was tried first and rejected (~1 ms and ~8 KB heap
+per stroked polyline on this chip).
+
+---
+
+## Hardware
+
+The board ("CGOTCHI ESP32‑S3 AI Development Kit", Cheeko Gotchi V2) has no
+public pin map. `board_config.h` was recovered by dumping the GPIO matrix of the
+stock firmware over the built‑in USB‑JTAG (`hw_probe/decode_gpio_matrix.py`) and
+confirmed with the `hw_probe` sketch.
+
+| Part | Pins |
+|---|---|
+| ESP32‑S3 | 16 MB quad flash, 8 MB octal PSRAM, native USB (`/dev/cu.usbmodem*`) |
+| LCD JD9853 240×296 | SPI2: SCLK 9, MOSI 10, CS 14, DC 8, RST 17; backlight PWM 13; mounted rotated 180°, BGR, not inverted |
+| Touch CST810 | I2C 0x15 on SDA 12 / SCL 11; mounted landscape (`x = 239 − raw_y`, `y = raw_x`); no INT |
+| Audio | ES8311 DAC 0x18, ES7210 ADC 0x40; I2S0 MCLK 5, BCLK 15, WS 16, DOUT 6, DIN 7 |
+| Keys | VOL+ = GPIO40 (also GPIO0/BOOT), VOL− = GPIO39; power key is hardware |
+| Other | LIS2DH‑class IMU 0x19; BQ27220 gauge 0x55 (silent without a battery); no microSD slot |
+
+The original 16 MB firmware image was backed up before the first flash
+(kept outside the repo); `esptool write-flash 0 <image>` restores it.
+
+### Known issues
+
+- **Backlight switches off after a while** — also happens with the original
+  firmware; only a power‑cycle brings it back. The ESP keeps running and the
+  backlight PWM keeps running, so it is the board's power circuitry, not
+  firmware. LCD re‑init and GPIO2/GPIO4 manipulation do not restore it.
+- **Speaker is silent.** The ES8311 is configured and I2S clocks are proven by
+  the working mic path, but the amplifier's enable line was not found (GPIO
+  1/2/3/4/18/21/38/41/42/47/48 tried). Voice feedback is on screen.
+- GPIO2 must be driven LOW as the stock firmware does; left floating the board
+  powers off after ~30 min, driven HIGH for seconds it powers off at once.
+- `audio-driver`: `addI2C(function, scl, sda, port, …)` stores `port` in the
   I2C *address* field — pass `-1` or the ES7210 is addressed at 0x00.
+
+---
+
+## Data
+
+Map data © OpenStreetMap contributors (ODbL). Speech and language models via Groq.
