@@ -74,6 +74,16 @@ osmium extract -b 77.40,12.78,77.85,13.25 -s smart -o bengaluru.osm.pbf southern
 ```
 Any static host works for the tile folder (it is plain files).
 
+## WiFi setup (no computer needed)
+
+Settings (WiFi + tile server) are stored in flash. On power-up the device tries
+the saved WiFi; if there is none or it cannot connect within 25 s, it opens the
+hotspot **CheekoMaps-Setup** and shows a QR code. Scan it with a phone (or join
+that WiFi), the setup page pops up (captive portal; manual URL
+`http://192.168.4.1`), choose the network, enter the password, save — the
+device reboots onto the new WiFi. Hold **VOL−** for 3 s at any time (or during
+power-on) to open setup again. `secrets.h` only provides the factory defaults.
+
 ## Controls
 
 Drag = pan · double-tap = zoom in · long-press = zoom out · VOL+/VOL− = zoom ·
@@ -82,7 +92,7 @@ mic button: press and hold while speaking (release = stop) → "take me to Koram
 
 Serial console (115200): `z <zoom>`, `g <lon> <lat> [zoom]`, `f <place>` (geocode),
 `v <text>` (run the LLM path on typed text), `s` (stats), `b <0-255>` brightness,
-`p` test tone, `L` re-init LCD.
+`p` test tone, `L` re-init LCD, `w` open WiFi setup.
 
 ## Performance (measured)
 

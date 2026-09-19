@@ -22,11 +22,13 @@
 #include "map_view.h"
 #include "geocode.h"
 #include "voice.h"
+#include "provision.h"
 
 static LGFX lcd;
 static TileStore store;
 static MapView mapv;   // "map" clashes with Arduino's map()
 static Geocoder geo;
+static Settings settings;
 static lv_obj_t* status_lbl;
 static lv_obj_t* toast_lbl;
 static lv_obj_t* mic_btn;
@@ -212,14 +214,19 @@ void setup() {
   lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(touch, touch_cb);
 
+  prov_load(settings, SEED_WIFI_SSID, SEED_WIFI_PASS, TILE_SERVER);   // NVS, falling back to secrets.h
+  Serial.printf("[wifi] ssid \"%s\", tiles %s\n", settings.ssid, settings.tiles);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
-  WiFi.begin(SEED_WIFI_SSID, SEED_WIFI_PASS);
+  WiFi.setAutoReconnect(true);
+  if (settings.ssid[0]) WiFi.begin(settings.ssid, settings.pass);
 
-  store.begin(TILE_SERVER, 3 * 1024 * 1024);
+  store.begin(settings.tiles, 3 * 1024 * 1024);
   build_ui();
   mapv.setCenter(HOME_LON, HOME_LAT, HOME_ZOOM);
   voice_begin();
+  // VOL- held at power-on, or no WiFi configured at all: go straight to setup
+  if (digitalRead(PIN_KEY_VOL_DOWN) == LOW || !settings.ssid[0]) prov_start(settings);
   Serial.printf("heap %u KB, psram %u KB\n", ESP.getFreeHeap() >> 10, ESP.getFreePsram() >> 10);
 }
 
@@ -257,6 +264,8 @@ static void handleSerial() {
         Serial.println("[lcd] re-initialised");
       } else if (line[0] == 'p') {
         voice_beep(1000, 1500);
+      } else if (line[0] == 'w') {                 // w : open the WiFi setup portal now
+        prov_start(settings);
       } else if (line[0] == 'b') {
         int v = atoi(line + 1); lcd.setBrightness(v); Serial.printf("[bl] brightness %d\n", v);
       } else if (line[0] == 's') {
@@ -276,8 +285,14 @@ void loop() {
   static bool wasOnline = false;
 
   lv_timer_handler();
-  mapv.loop();
   handleSerial();
+  if (prov_active()) { prov_loop(); delay(2); return; }      // setup screen owns the device until it reboots
+  mapv.loop();
+
+  // never got online since boot -> open the setup portal (new owner, new WiFi)
+  static bool everOnline = false;
+  if (WiFi.status() == WL_CONNECTED) everOnline = true;
+  if (!everOnline && millis() > 25000) { prov_start(settings); return; }
 
   bool online = WiFi.status() == WL_CONNECTED;
   if (online != wasOnline) {
@@ -287,7 +302,7 @@ void loop() {
   }
   if (online && !geo.ready()) {
     static uint32_t lastTry = 0;
-    if (millis() - lastTry > 10000) { lastTry = millis(); geo.load(TILE_SERVER "/places.bin"); }
+    if (millis() - lastTry > 10000) { lastTry = millis(); geo.load((String(settings.tiles) + "/places.bin").c_str()); }
   }
   VoiceCommand vc;
   if (voice_poll(vc)) handle_voice(vc);
@@ -296,8 +311,15 @@ void loop() {
   if (millis() - lastKeys > 20) {
     lastKeys = millis();
     int up = digitalRead(PIN_KEY_VOL_UP), dn = digitalRead(PIN_KEY_VOL_DOWN);
+    static uint32_t dnSince = 0;
     if (up != upPrev) { upPrev = up; if (!up) mapv.zoomBy(+1); }
-    if (dn != dnPrev) { dnPrev = dn; if (!dn) mapv.zoomBy(-1); }
+    if (dn != dnPrev) {
+      dnPrev = dn;
+      if (!dn) dnSince = millis();
+      else if (dnSince && millis() - dnSince < 3000) mapv.zoomBy(-1);   // short press: zoom out
+      if (dn) dnSince = 0;
+    }
+    if (!dn && dnSince && millis() - dnSince >= 3000) { dnSince = 0; prov_start(settings); return; }   // 3 s hold: WiFi setup
   }
 
   if (millis() - lastStatus > 200) {
