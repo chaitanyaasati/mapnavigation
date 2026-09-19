@@ -28,7 +28,7 @@ OSM .pbf ──build_tiles.py──▶ tiles/z/x/y.bin ─┐
 ## Installing on the device (from a fresh checkout)
 
 ```bash
-git clone https://github.com/<you>/mapnavigation.git
+git clone https://github.com/chaitanyaasati/mapnavigation.git
 cd mapnavigation
 
 # 1. toolchain + libraries (once per machine)
