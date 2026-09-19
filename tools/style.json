@@ -1,0 +1,42 @@
+{
+  "_comment": "Shared map style. Colours are hex RGB; widths are px at the given zoom, linearly interpolated between listed zooms. gen_style_h.py turns this into maps/style.h.",
+  "background": "F2EFE9",
+  "water":    { "fill": "AAD3DF" },
+  "landuse": {
+    "0": { "fill": "C8E6C0" }, "1": { "fill": "ADD19E" }, "2": { "fill": "E8E1DA" },
+    "3": { "fill": "E6D9D0" }, "4": { "fill": "EEF0D5" }, "5": { "fill": "C8D8C0" },
+    "6": { "fill": "F0E8D8" }, "7": { "fill": "BFE2B0" }, "8": { "fill": "E9E7E2" },
+    "9": { "fill": "EEEEEE" }
+  },
+  "building": { "fill": "D9D0C9", "outline": "C4B9B0", "outline_from_zoom": 16 },
+  "waterway": {
+    "0": { "stroke": "AAD3DF", "width": { "11": 1.0, "14": 2.5, "16": 5 } },
+    "1": { "stroke": "AAD3DF", "width": { "13": 1.0, "16": 3 } },
+    "2": { "stroke": "AAD3DF", "width": { "14": 0.8, "16": 1.5 } }
+  },
+  "road": {
+    "0": { "fill": "E892A2", "casing": "C24E6B", "width": { "10": 1.5, "12": 3, "14": 6, "16": 12 }, "casing_from_zoom": 12 },
+    "1": { "fill": "F9B29C", "casing": "CF6A4C", "width": { "10": 1.2, "12": 2.5, "14": 5, "16": 10 }, "casing_from_zoom": 12 },
+    "2": { "fill": "FCD6A4", "casing": "C8A04C", "width": { "11": 1.0, "13": 2.5, "15": 5, "16": 9 }, "casing_from_zoom": 13 },
+    "3": { "fill": "F7FABF", "casing": "B8B860", "width": { "12": 0.8, "14": 2, "16": 7 }, "casing_from_zoom": 14 },
+    "4": { "fill": "FFFFFF", "casing": "B0A89E", "width": { "13": 0.8, "15": 2.5, "16": 6 }, "casing_from_zoom": 15 },
+    "5": { "fill": "FFFFFF", "casing": "B9B1A8", "width": { "14": 0.9, "15": 1.8, "16": 4.5 }, "casing_from_zoom": 15 },
+    "6": { "fill": "FFFFFF", "casing": "C6BFB7", "width": { "15": 0.8, "16": 2.5 }, "casing_from_zoom": 16 },
+    "7": { "fill": "C9A78E", "casing": "FFFFFF", "width": { "15": 0.6, "16": 1.2 }, "dash": [3, 2] },
+    "8": { "fill": "DDDDDD", "casing": "BBBBBB", "width": { "15": 0.6, "16": 1.5 } }
+  },
+  "rail": {
+    "0": { "stroke": "8A8A8A", "width": { "11": 0.8, "14": 1.5, "16": 2.5 }, "dash": [6, 6], "dash_color": "FFFFFF" },
+    "1": { "stroke": "7A4E9F", "width": { "12": 0.8, "14": 1.5, "16": 2.5 } },
+    "2": { "stroke": "9A9A9A", "width": { "14": 0.8, "16": 1.5 } }
+  },
+  "aeroway": {
+    "0": { "stroke": "BBBCC3", "width": { "12": 2, "14": 6, "16": 20 } },
+    "1": { "stroke": "BBBCC3", "width": { "12": 0.8, "14": 2, "16": 6 } }
+  },
+  "label": {
+    "place": { "0": { "size": 16, "color": "222222" }, "1": { "size": 14, "color": "222222" }, "2": { "size": 12, "color": "444444" }, "3": { "size": 12, "color": "555555" }, "4": { "size": 12, "color": "555555" } },
+    "poi":   { "color": "6B4F3A", "size": 12 },
+    "halo":  "F2EFE9"
+  }
+}

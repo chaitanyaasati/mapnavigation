@@ -1,0 +1,7 @@
+secrets.h
+tools/.venv/
+tools/hosttest/render_scene
+tools/hosttest/render_tile
+tools/hosttest/*.ppm
+tools/hosttest/*.png
+tools/out/
