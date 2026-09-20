@@ -103,7 +103,9 @@ cp maps/secrets.h.example maps/secrets.h
 ```
 Edit `maps/secrets.h`: `SEED_WIFI_SSID` / `SEED_WIFI_PASS` (factory defaults;
 the portal overrides them), `SEED_GROQ_KEY` (voice), `TILE_SERVER`
-(e.g. `http://192.168.0.4:8000/bengaluru`). `secrets.h` is git‑ignored.
+(e.g. `http://My-Mac.local:8000/bengaluru` — a `.local` name is resolved via
+mDNS at boot, so a DHCP address change on the server does not break the device;
+`scutil --get LocalHostName` prints a Mac's name). `secrets.h` is git‑ignored.
 
 ### 3. Flash
 
@@ -150,7 +152,8 @@ Renders with the exact device code — use it to check style/pipeline changes.
 
 `z <zoom>` · `g <lon> <lat> [zoom]` · `f <place>` geocode · `v <text>` run the
 LLM/command path on typed text · `s` stats · `b <0‑255>` brightness ·
-`p` test tone · `L` re‑init LCD · `w` open WiFi setup.
+`p` test tone · `L` re‑init LCD · `w` open WiFi setup · `t <url>` set the tile
+server (saved to flash).
 
 ---
 
@@ -214,6 +217,9 @@ The original 16 MB firmware image was backed up before the first flash
   1/2/3/4/18/21/38/41/42/47/48 tried). Voice feedback is on screen.
 - GPIO2 must be driven LOW as the stock firmware does; left floating the board
   powers off after ~30 min, driven HIGH for seconds it powers off at once.
+- If voice says *Not found* for everything, the device could not download
+  `places.bin` — check the tile server is reachable (status line shows `...`
+  when tiles are pending).
 - `audio-driver`: `addI2C(function, scl, sda, port, …)` stores `port` in the
   I2C *address* field — pass `-1` or the ES7210 is addressed at 0x00.
 

@@ -11,6 +11,7 @@
 // =============================================================================
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <lvgl.h>
 #include <esp_heap_caps.h>
 #include "board_config.h"
@@ -29,6 +30,7 @@ static TileStore store;
 static MapView mapv;   // "map" clashes with Arduino's map()
 static Geocoder geo;
 static Settings settings;
+static String tileBase;          // settings.tiles with a .local host resolved to an IP
 static lv_obj_t* status_lbl;
 static lv_obj_t* toast_lbl;
 static lv_obj_t* mic_btn;
@@ -84,6 +86,25 @@ static void map_event(lv_event_t* e) {
       break;
     default: break;
   }
+}
+
+// "http://Macbook-Pro.local:8000/x" -> "http://192.168.0.7:8000/x". Plain IPs/hostnames pass through.
+// lwIP's resolver does not speak mDNS, so .local names are looked up here once WiFi is up.
+static String resolveTileBase(const char* url) {
+  String u = url;
+  int hs = u.indexOf("://"); if (hs < 0) return u;
+  hs += 3;
+  int he = u.indexOf('/', hs); if (he < 0) he = u.length();
+  String hostport = u.substring(hs, he);
+  int colon = hostport.indexOf(':');
+  String host = colon >= 0 ? hostport.substring(0, colon) : hostport;
+  String port = colon >= 0 ? hostport.substring(colon) : "";
+  if (!host.endsWith(".local")) return u;
+  String name = host.substring(0, host.length() - 6);
+  IPAddress ip = MDNS.queryHost(name.c_str(), 3000);
+  if (ip == IPAddress((uint32_t)0)) { Serial.printf("[mdns] %s not found\n", host.c_str()); return u; }
+  Serial.printf("[mdns] %s -> %s\n", host.c_str(), ip.toString().c_str());
+  return u.substring(0, hs) + ip.toString() + port + u.substring(he);
 }
 
 static void toast(const char* text, uint32_t ms = 4000) {
@@ -221,6 +242,7 @@ void setup() {
   WiFi.setAutoReconnect(true);
   if (settings.ssid[0]) WiFi.begin(settings.ssid, settings.pass);
 
+  tileBase = settings.tiles;
   store.begin(settings.tiles, 3 * 1024 * 1024);
   build_ui();
   mapv.setCenter(HOME_LON, HOME_LAT, HOME_ZOOM);
@@ -264,6 +286,10 @@ static void handleSerial() {
         Serial.println("[lcd] re-initialised");
       } else if (line[0] == 'p') {
         voice_beep(1000, 1500);
+      } else if (line[0] == 't') {                 // t <url> : set the tile server (saved to flash), then reboot
+        String u = String(line + 1); u.trim();
+        if (u.startsWith("http")) { strlcpy(settings.tiles, u.c_str(), sizeof settings.tiles); prov_save(settings); Serial.printf("[tiles] server -> %s, rebooting\n", settings.tiles); delay(200); ESP.restart(); }
+        else Serial.printf("[tiles] server is %s (effective %s)\n", settings.tiles, tileBase.c_str());
       } else if (line[0] == 'w') {                 // w : open the WiFi setup portal now
         prov_start(settings);
       } else if (line[0] == 'b') {
@@ -298,11 +324,20 @@ void loop() {
   if (online != wasOnline) {
     wasOnline = online;
     store.setOnline(online);
-    if (online) { Serial.printf("[wifi] %s\n", WiFi.localIP().toString().c_str()); mapv.endPan(); }
+    if (online) {
+      Serial.printf("[wifi] %s\n", WiFi.localIP().toString().c_str());
+      MDNS.begin("cheekomaps");
+      tileBase = resolveTileBase(settings.tiles);
+      store.setBase(tileBase.c_str());
+      mapv.endPan();
+    }
   }
   if (online && !geo.ready()) {
     static uint32_t lastTry = 0;
-    if (millis() - lastTry > 10000) { lastTry = millis(); geo.load((String(settings.tiles) + "/places.bin").c_str()); }
+    if (millis() - lastTry > 10000) {
+      lastTry = millis();
+      if (!geo.load((tileBase + "/places.bin").c_str())) { tileBase = resolveTileBase(settings.tiles); store.setBase(tileBase.c_str()); }
+    }
   }
   VoiceCommand vc;
   if (voice_poll(vc)) handle_voice(vc);

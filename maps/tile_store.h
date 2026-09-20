@@ -19,6 +19,7 @@ class TileStore {
 public:
   // base_url like "http://192.168.1.10:8000/bengaluru"; psram_budget bytes for the LRU
   bool begin(const char* base_url, size_t psram_budget);
+  void setBase(const char* base_url) { strncpy(_base, base_url, sizeof _base - 1); _base[sizeof _base - 1] = 0; }
   // Returns true when the tile state is known (data may still be null = empty).
   // Blocks on the network when needed; returns false on a transient failure.
   bool get(int z, int x, int y, TileData& out);
