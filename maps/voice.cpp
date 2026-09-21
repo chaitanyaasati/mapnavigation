@@ -21,16 +21,21 @@ using namespace audio_driver;
 #define SILENCE_RMS    400
 #define MIC_GAIN_SHIFT 2                 // software gain on top of the ES7210 PGA
 
-static const char* SYSTEM_PROMPT =
-  "You control a street map of Bengaluru (Bangalore), India on a small device. "
+static String regionCity = "the city";
+static String regionHints = "";
+void voice_set_region(const char* city, const char* hintNames) { if (city) regionCity = city; if (hintNames) regionHints = hintNames; }
+
+static String systemPrompt() {
+  return "You control a street map of " + regionCity + " on a small device. "
   "The user speaks a short command; the text you get is a speech transcript and may misspell local names - "
-  "correct them to their common spelling (e.g. 'kormangla' -> 'Koramangala', 'indranagar' -> 'Indiranagar'). "
+  "correct them to their common spelling. Known places include: " + regionHints + ". "
   "Reply with ONLY a JSON object, no prose, one of:\n"
   "{\"action\":\"goto\",\"place\":\"<place, area, road or landmark name only, no city suffix>\",\"zoom\":<11-16 or null>}\n"
   "{\"action\":\"zoom\",\"delta\":<-3..3>}   for zoom in/out requests\n"
   "{\"action\":\"pan\",\"dir\":\"north|south|east|west\"}\n"
   "{\"action\":\"say\",\"text\":\"<max 12 words>\"}   when the request is not a map command.\n"
   "Pick zoom 15-16 for a specific road/landmark, 13-14 for an area/neighbourhood, 11-12 for the whole city.";
+}
 
 // ---- hardware -----------------------------------------------------------------------
 class CheekoPinsClass : public DriverDeviceInfo {
@@ -115,7 +120,7 @@ static String listen(uint32_t& msStt) {
   String pre = String("--") + B + "\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n" STT_MODEL "\r\n"
                "--" + B + "\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\nen\r\n"
                "--" + B + "\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\ntext\r\n"
-               "--" + B + "\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nBengaluru place names: Koramangala, Indiranagar, Whitefield, Jayanagar, MG Road, Malleshwaram, Hebbal, Electronic City, Marathahalli, Yelahanka.\r\n"
+               "--" + B + "\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n" + regionCity + " place names: " + regionHints + ".\r\n"
                "--" + B + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\nContent-Type: audio/wav\r\n\r\n";
   net.print(String("POST /openai/v1/audio/transcriptions HTTP/1.1\r\nHost: " GROQ_HOST "\r\nAuthorization: Bearer ") + SEED_GROQ_KEY +
             "\r\nUser-Agent: CheekoMaps/1.0\r\nContent-Type: multipart/form-data; boundary=" + B + "\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
@@ -164,7 +169,7 @@ static bool think(const String& heard, VoiceCommand& cmd) {
   if (!net.connect(GROQ_HOST, 443)) return false;
   String body = String("{\"model\":\"" LLM_MODEL "\",\"temperature\":0.1,\"max_tokens\":120,\"reasoning_effort\":\"low\","
                        "\"response_format\":{\"type\":\"json_object\"},"
-                       "\"messages\":[{\"role\":\"system\",\"content\":\"") + jsonEsc(SYSTEM_PROMPT) + "\"},"
+                       "\"messages\":[{\"role\":\"system\",\"content\":\"") + jsonEsc(systemPrompt()) + "\"},"
                 "{\"role\":\"user\",\"content\":\"" + jsonEsc(heard) + "\"}]}";
   net.print(String("POST /openai/v1/chat/completions HTTP/1.1\r\nHost: " GROQ_HOST "\r\nAuthorization: Bearer ") + SEED_GROQ_KEY +
             "\r\nUser-Agent: CheekoMaps/1.0\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: " + String(body.length()) + "\r\n\r\n");

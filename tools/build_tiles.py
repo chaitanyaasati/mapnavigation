@@ -270,7 +270,9 @@ def main():
     ap.add_argument('--bbox', nargs=4, type=float, required=True, metavar=('W', 'S', 'E', 'N'))
     ap.add_argument('--minzoom', type=int, default=10)
     ap.add_argument('--maxzoom', type=int, default=16)
-    ap.add_argument('--name', default=None)
+    ap.add_argument('--name', default=None, help='folder/id name (default: output dir name)')
+    ap.add_argument('--city', default=None, help='human name for prompts, e.g. "Mumbai, India"')
+    ap.add_argument('--center', nargs=3, type=float, metavar=('LON', 'LAT', 'ZOOM'), default=None, help='start view (default: bbox centre, z13)')
     ap.add_argument('--max-buildings', type=int, default=2500, help='per tile, largest first')
     args = ap.parse_args()
     bbox = tuple(args.bbox)
@@ -391,8 +393,9 @@ def main():
         total_bytes += z_bytes
         print(f"z{z}: {z_tiles} tiles, {z_bytes / 1024:.0f} KB, avg {z_bytes / max(1, z_tiles) / 1024:.1f} KB, {time.time() - zt:.0f}s", file=sys.stderr)
 
-    meta = dict(name=args.name or os.path.basename(args.out.rstrip('/')), bbox=list(bbox), minzoom=args.minzoom,
-                maxzoom=args.maxzoom, center=[(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2, 13], extent=EXTENT)
+    name = args.name or os.path.basename(args.out.rstrip('/'))
+    meta = dict(name=name, city=args.city or name.title(), bbox=list(bbox), minzoom=args.minzoom, maxzoom=args.maxzoom,
+                center=list(args.center) if args.center else [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2, 13], extent=EXTENT)
     with open(os.path.join(args.out, 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=1)
     print(f"done: {total_tiles} tiles, {total_bytes / 1048576:.1f} MB in {time.time() - t0:.0f}s", file=sys.stderr)

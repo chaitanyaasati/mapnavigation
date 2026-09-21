@@ -29,6 +29,7 @@ struct VoiceCommand {
 };
 
 bool voice_begin();
+void voice_set_region(const char* city, const char* hintNames);   // e.g. "Mumbai, India", "Bandra, Andheri, Colaba, ..."
 void voice_start();
 void voice_stop();
 bool voice_poll(VoiceCommand& out);

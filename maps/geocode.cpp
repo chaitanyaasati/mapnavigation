@@ -83,3 +83,20 @@ bool Geocoder::find(const char* query, GeoHit& best) {
   }
   return best.score > 0;
 }
+
+// Entries are written rank-sorted (city, town, suburb, ...), so the first n are the big names.
+String Geocoder::topNames(int n) const {
+  String out;
+  if (!_data) return out;
+  const uint8_t* p = _data + 8;
+  for (uint32_t i = 0; i < _count && n > 0 && p + 11 <= _data + _len; i++) {
+    uint8_t rank = p[8], len = p[10];
+    if (rank <= 2) {
+      if (out.length()) out += ", ";
+      out += String((const char*)(p + 11), len);
+      n--;
+    }
+    p += 11 + len;
+  }
+  return out;
+}

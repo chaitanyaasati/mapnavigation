@@ -12,6 +12,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include <lvgl.h>
 #include <esp_heap_caps.h>
 #include "board_config.h"
@@ -36,9 +39,35 @@ static lv_obj_t* toast_lbl;
 static lv_obj_t* mic_btn;
 static uint32_t toast_until = 0;
 
-// Bengaluru, MG Road-ish
-static const double HOME_LON = 77.6094, HOME_LAT = 12.9752;
-static const float  HOME_ZOOM = 14;
+// Fallback start view until <TILE_SERVER>/meta.json says otherwise (Bengaluru, MG Road)
+static double HOME_LON = 77.6094, HOME_LAT = 12.9752;
+static float  HOME_ZOOM = 14;
+static bool   metaLoaded = false;
+
+// meta.json (written by build_tiles.py): city name for the voice prompts and the start view.
+static bool loadMeta() {
+  WiFiClient plain; WiFiClientSecure tls; HTTPClient http;
+  String url = tileBase + "/meta.json";
+  bool https = url.startsWith("https://");
+  if (https) tls.setInsecure();
+  http.setTimeout(8000);
+  if (!http.begin(https ? (WiFiClient&)tls : plain, url)) return false;
+  int code = http.GET();
+  if (code != 200) { Serial.printf("[meta] GET %s -> %d\n", url.c_str(), code); http.end(); return false; }
+  JsonDocument doc;
+  bool ok = !deserializeJson(doc, http.getString());
+  http.end();
+  if (!ok) return false;
+  const char* city = doc["city"] | (const char*)(doc["name"] | "the city");
+  voice_set_region(city, "");
+  if (doc["center"].is<JsonArray>() && doc["center"].size() >= 2) {
+    HOME_LON = doc["center"][0]; HOME_LAT = doc["center"][1];
+    if (doc["center"].size() >= 3) HOME_ZOOM = doc["center"][2];
+    mapv.setCenter(HOME_LON, HOME_LAT, HOME_ZOOM);
+  }
+  Serial.printf("[meta] %s, start %.4f,%.4f z%.0f\n", city, HOME_LON, HOME_LAT, HOME_ZOOM);
+  return true;
+}
 
 // ---- LVGL <-> LovyanGFX glue -------------------------------------------------
 static const size_t DRAW_BUF_LINES = 24;
@@ -332,11 +361,13 @@ void loop() {
       mapv.endPan();
     }
   }
-  if (online && !geo.ready()) {
+  if (online && (!metaLoaded || !geo.ready())) {
     static uint32_t lastTry = 0;
     if (millis() - lastTry > 10000) {
       lastTry = millis();
+      if (!metaLoaded) metaLoaded = loadMeta();
       if (!geo.load((tileBase + "/places.bin").c_str())) { tileBase = resolveTileBase(settings.tiles); store.setBase(tileBase.c_str()); }
+      else { String hints = geo.topNames(14); voice_set_region(nullptr, hints.c_str()); }
     }
   }
   VoiceCommand vc;

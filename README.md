@@ -132,8 +132,22 @@ osmium extract -b 77.40,12.78,77.85,13.25 -s smart -o bengaluru.osm.pbf southern
 .venv/bin/python build_places.py bengaluru.osm.pbf out/bengaluru/places.bin --bbox 77.40 12.78 77.85 13.25
 .venv/bin/python serve.py --port 8000 --dir out        # device fetches <TILE_SERVER>/z/x/y.bin and /places.bin
 ```
-Other cities: same commands with a different bbox and output name; set
-`TILE_SERVER` accordingly. `HOME_LON/LAT` in `maps.ino` is the start position.
+### Adding a city
+
+One command builds the tiles + place index and publishes them to the Pages repo:
+
+```bash
+tools/add_city.sh mumbai "Mumbai, India" 72.77 18.89 73.03 19.28 \
+    ~/Documents/Arduino/maps-data/western-zone-latest.osm.pbf 72.8777 19.0760 13
+#              id   "City, Country"    west  south east  north   any Geofabrik .pbf containing the bbox   [start lon lat zoom]
+```
+Then point the device at it: serial `t https://chaitanyaasati.github.io/mapnavigation-tiles/mumbai`,
+or the WiFi setup page → *Map tile server*. Everything city-specific — start
+view, the city name in the voice prompts, the place-name hints given to the
+speech model — comes from that folder's `meta.json` and `places.bin`, so no
+firmware change is needed. Bounding boxes: pick them on
+https://boundingbox.klokantech.com (CSV format). A metro area at z10–16 is
+roughly 50–100 MB; Pages allows 1 GB per site.
 
 **Hosting on GitHub Pages (the default).** The tiles are plain static files, so
 they live in a second public repo served by Pages:
