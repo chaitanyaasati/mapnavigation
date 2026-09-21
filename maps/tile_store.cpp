@@ -2,10 +2,14 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
 
 static const size_t MAX_TILE = 256 * 1024;
+static WiFiClient plain;
+static WiFiClientSecure tls;
+static HTTPClient http;
 static const size_t FLASH_KEEP_FREE = 256 * 1024;      // stop caching to flash below this
 
 static void writerTrampoline(void* p) { ((TileStore*)p)->writerLoop(); }
@@ -139,11 +143,16 @@ bool TileStore::fetch(int z, int x, int y, uint8_t*& data, uint32_t& len, bool& 
   notFound = false; data = nullptr; len = 0;
   if (!_online || WiFi.status() != WL_CONNECTED) return false;
   char url[192]; snprintf(url, sizeof url, "%s/%d/%d/%d.bin", _base, z, x, y);
-  static WiFiClient client;
-  static HTTPClient http;
+  // One HTTPClient per scheme, kept open between tiles (a TLS handshake costs ~1 s
+  // and ~40 KB; GitHub Pages and most hosts are https-only). idleTick() closes it
+  // again when tiles stop flowing so the RAM goes back to the voice pipeline.
+  static bool tlsInit = false;
+  bool https = strncmp(url, "https://", 8) == 0;
+  if (https && !tlsInit) { tls.setInsecure(); tlsInit = true; }
   http.setReuse(true);
-  http.setTimeout(4000);
-  if (!http.begin(client, url)) return false;
+  http.setTimeout(https ? 8000 : 4000);
+  _httpp = &http; _lastFetchMs = millis();
+  if (!http.begin(https ? (WiFiClient&)tls : plain, url)) return false;
   int code = http.GET();
   if (code == 404) { notFound = true; http.end(); return true; }
   if (code != 200) { Serial.printf("[tiles] GET %s -> %d (%s)\n", url, code, http.errorToString(code).c_str()); http.end(); return false; }
@@ -153,7 +162,7 @@ bool TileStore::fetch(int z, int x, int y, uint8_t*& data, uint32_t& len, bool& 
   if (!data) { http.end(); return false; }
   WiFiClient* s = http.getStreamPtr();
   uint32_t got = 0, t0 = millis();
-  while (got < (uint32_t)size && millis() - t0 < 4000) {
+  while (got < (uint32_t)size && millis() - t0 < (https ? 8000u : 4000u)) {
     int avail = s->available();
     if (avail > 0) { int r = s->read(data + got, min<int>(avail, size - got)); if (r > 0) got += r; }
     else delay(1);
@@ -163,6 +172,17 @@ bool TileStore::fetch(int z, int x, int y, uint8_t*& data, uint32_t& len, bool& 
   len = size;
   statBytes += len;
   return true;
+}
+
+// Close the kept-alive connection after a quiet spell (frees the TLS context).
+void TileStore::idleTick() {
+  if (_httpp && _lastFetchMs && millis() - _lastFetchMs > 8000) closeConnection();
+}
+void TileStore::closeConnection() {
+  if (!_lastFetchMs) return;
+  http.setReuse(false); http.end();      // end() alone keeps a reusable socket open
+  tls.stop(); plain.stop();              // stop() frees the mbedTLS context (~40 KB)
+  _lastFetchMs = 0;
 }
 
 bool TileStore::has(int z, int x, int y) {

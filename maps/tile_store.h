@@ -26,6 +26,8 @@ public:
   void setOnline(bool on) { _online = on; }
   uint32_t statHits = 0, statFlashHits = 0, statFetches = 0, statBytes = 0, statFails = 0, statFetchMs = 0;
   bool has(int z, int x, int y);   // cached in PSRAM (no I/O)
+  void idleTick();                 // call periodically from the render task: drops an idle connection
+  void closeConnection();          // drop the kept-alive (TLS) connection now, e.g. before voice needs the RAM
   size_t flashUsed() const, flashTotal() const;
 
 private:
@@ -36,6 +38,7 @@ private:
   uint32_t _tick = 0;
   char _base[128];
   bool _online = false, _fsOk = false;
+  void* _httpp = nullptr; uint32_t _lastFetchMs = 0;
 
   static uint32_t keyOf(int z, int x, int y) { uint32_t k = ((uint32_t)z << 27) ^ ((uint32_t)x << 14) ^ (uint32_t)y ^ ((uint32_t)z * 0x9E3779B1u); return k ? k : 1; }
   Entry* find(uint32_t key);

@@ -2,14 +2,17 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 #include <string.h>
 #include <ctype.h>
 
 bool Geocoder::load(const char* url) {
-  WiFiClient client; HTTPClient http;
-  http.setTimeout(8000);
-  if (!http.begin(client, url)) return false;
+  WiFiClient plain; WiFiClientSecure tls; HTTPClient http;
+  bool https = strncmp(url, "https://", 8) == 0;
+  if (https) tls.setInsecure();
+  http.setTimeout(15000);
+  if (!http.begin(https ? (WiFiClient&)tls : plain, url)) return false;
   int code = http.GET();
   int size = http.getSize();
   if (code != 200 || size <= 8) { Serial.printf("[geo] GET %s -> %d\n", url, code); http.end(); return false; }
@@ -17,7 +20,7 @@ bool Geocoder::load(const char* url) {
   if (!buf) { http.end(); return false; }
   WiFiClient* s = http.getStreamPtr();
   int got = 0; uint32_t t0 = millis();
-  while (got < size && millis() - t0 < 15000) {
+  while (got < size && millis() - t0 < 30000) {
     int a = s->available();
     if (a > 0) { int r = s->read(buf + got, min(a, size - got)); if (r > 0) got += r; }
     else delay(1);

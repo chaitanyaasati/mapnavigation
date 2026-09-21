@@ -115,7 +115,7 @@ static void toast(const char* text, uint32_t ms = 4000) {
 
 static void mic_event(lv_event_t* e) {
   lv_event_code_t code = lv_event_get_code(e);
-  if (code == LV_EVENT_PRESSED) { voice_start(); toast("Listening... hold while you speak", 15000); }
+  if (code == LV_EVENT_PRESSED) { store.closeConnection(); voice_start(); toast("Listening... hold while you speak", 15000); }
   else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) { voice_stop(); if (voice_state() == VS_LISTENING || voice_state() == VS_THINKING) toast("Thinking...", 20000); }
 }
 
@@ -256,7 +256,7 @@ void setup() {
 //   z <zoom>            set zoom      g <lon> <lat> [zoom]   go to
 //   s                   stats
 static void handleSerial() {
-  static char line[64]; static int n = 0;
+  static char line[200]; static int n = 0;
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') {
@@ -271,7 +271,7 @@ static void handleSerial() {
         if (geo.find(line + 2, hit)) { Serial.printf("[geo] '%s' -> %s (%.5f,%.5f) rank %d kind %d score %d\n", line + 2, hit.name, hit.lon, hit.lat, hit.rank, hit.kind, hit.score); mapv.flyTo(hit.lon, hit.lat, hit.kind == 0 ? 14 : 15.5f); }
         else Serial.printf("[geo] '%s' not found\n", line + 2);
       } else if (line[0] == 'v') {
-        voice_test_text(line + 2);
+        store.closeConnection(); voice_test_text(line + 2);
       } else if (line[0] == 'P') {                 // P <gpio>: tone with that pin held high (hunting the amp enable)
         int pin = atoi(line + 1);
         static const int ok[] = {1, 3, 4, 18, 21, 38, 41, 42, 47, 48};

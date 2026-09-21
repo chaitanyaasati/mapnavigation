@@ -170,7 +170,7 @@ void MapView::prefetchAround(const View& v) {
 
 void MapView::renderTaskLoop() {
   for (;;) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    while (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) == 0) _store->idleTick();
     for (;;) {
       taskENTER_CRITICAL(&_mux);
       bool pending = _reqPending; View v = _req; _reqPending = false;

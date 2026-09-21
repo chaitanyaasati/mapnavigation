@@ -13,7 +13,7 @@ map flies there.
 |---|---|
 | Rendering | custom anti‑aliased rasteriser (`maps/raster.cpp`) into an off‑screen canvas, LVGL 9 UI |
 | Data | OSM extract → ~10k lean binary tiles (52 MB for Bengaluru) + an offline place index |
-| Delivery | HTTP from any static host, PSRAM LRU + 12 MB flash cache on the device |
+| Delivery | HTTP(S) from any static host — GitHub Pages by default — PSRAM LRU + 12 MB flash cache on the device |
 | Voice | push‑to‑talk → Groq Whisper → LLM → JSON map command → local geocoder |
 | WiFi | captive‑portal setup with a QR code; settings stored in flash |
 
@@ -135,10 +135,15 @@ osmium extract -b 77.40,12.78,77.85,13.25 -s smart -o bengaluru.osm.pbf southern
 Other cities: same commands with a different bbox and output name; set
 `TILE_SERVER` accordingly. `HOME_LON/LAT` in `maps.ino` is the start position.
 
-**Handing the device to someone else:** the tile folder is plain static files.
-Put `out/<region>` on a host reachable from anywhere (a Raspberry Pi behind a
-tunnel, GitHub Pages, S3, …), bake that URL into `TILE_SERVER`, and the device
-only needs WiFi. Voice already talks to Groq over the internet.
+**Hosting on GitHub Pages (the default).** The tiles are plain static files, so
+they live in a second public repo served by Pages:
+[mapnavigation-tiles](https://github.com/chaitanyaasati/mapnavigation-tiles) →
+`https://chaitanyaasati.github.io/mapnavigation-tiles/bengaluru`. To publish a
+new build: copy `out/<region>` into that repo, commit, push — Pages redeploys
+in a few minutes. Pages is HTTPS-only; the device keeps one TLS connection open
+while tiles are flowing and closes it when idle or when the mic is pressed
+(TLS needs ~40 KB of RAM that voice also needs). `tools/serve.py` remains the
+fast LAN option for development (`http://<mac-name>.local:8000/<region>`).
 
 ### Host preview (no board needed)
 
