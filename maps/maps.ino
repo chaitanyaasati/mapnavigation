@@ -98,9 +98,14 @@ static void map_event(lv_event_t* e) {
   lv_indev_t* indev = lv_indev_active();
   if (!indev) return;
   lv_point_t p;
+  static int moved = 0;                 // px travelled since touch-down: a long-press is only a zoom if the finger stayed put
   switch (code) {
+    case LV_EVENT_PRESSED:
+      moved = 0;
+      break;
     case LV_EVENT_PRESSING:
       lv_indev_get_vect(indev, &p);
+      moved += abs(p.x) + abs(p.y);
       if (p.x || p.y) mapv.panBy(p.x, p.y);
       break;
     case LV_EVENT_RELEASED:
@@ -111,7 +116,7 @@ static void map_event(lv_event_t* e) {
       mapv.zoomBy(+1, p.x, p.y);
       break;
     case LV_EVENT_LONG_PRESSED:
-      mapv.zoomBy(-1);
+      if (moved < 10) mapv.zoomBy(-1);
       break;
     default: break;
   }
@@ -263,6 +268,7 @@ void setup() {
   lv_indev_t* touch = lv_indev_create();
   lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(touch, touch_cb);
+  lv_indev_set_long_press_time(touch, 600);   // default 400 ms felt too eager while panning
 
   prov_load(settings, SEED_WIFI_SSID, SEED_WIFI_PASS, TILE_SERVER);   // NVS, falling back to secrets.h
   Serial.printf("[wifi] ssid \"%s\", tiles %s\n", settings.ssid, settings.tiles);
